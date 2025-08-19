@@ -1,0 +1,57 @@
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.ensemble import RandomForestClassifier
+import matplotlib.pyplot as plt
+
+# --- [1] Load dan Preprocessing Dataset Kaggle ---
+df_kaggle = pd.read_csv("MalwareMemoryDump.csv")
+
+# Label: Benign = 0, Malware = 1
+df_kaggle['label'] = df_kaggle['Raw_Type'].apply(lambda x: 0 if x == 'Benign' else 1)
+df_kaggle = df_kaggle.dropna(subset=['label'])
+
+# --- [2] Gunakan hanya fitur terpilih ---
+selected_features = [
+    'pslist_nproc', 'pslist_nppid', 'pslist_avg_threads', 'pslist_nprocs64bit',
+    'dlllist_ndlls', 'dlllist_avg_dlls_per_proc', 'handles_nhandles',
+    'handles_avg_handles_per_proc', 'handles_nport', 'handles_nfile',
+    'handles_nevent', 'handles_ndesktop', 'handles_nkey', 'handles_nthread',
+    'handles_ndirectory', 'handles_nsemaphore', 'handles_ntimer', 'handles_nsection',
+    'handles_nmutant', 'ldrmodules_not_in_load', 'ldrmodules_not_in_init',
+    'ldrmodules_not_in_mem', 'ldrmodules_not_in_load_avg', 'ldrmodules_not_in_init_avg',
+    'ldrmodules_not_in_mem_avg', 'malfind_ninjections', 'malfind_commitCharge',
+    'malfind_protection', 'malfind_uniqueInjections', 'modules_nmodules',
+    'svcscan_nservices', 'svcscan_kernel_drivers', 'svcscan_fs_drivers',
+    'callbacks_ncallbacks'
+]
+
+# Filter hanya baris yang tidak mengandung NaN di kolom yang dipilih
+df_kaggle = df_kaggle.dropna(subset=selected_features)
+
+X = df_kaggle[selected_features]
+y = df_kaggle['label']
+
+# --- [3] Split data 70% training, 30% testing ---
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+
+# --- [4] Training model Random Forest ---
+model = RandomForestClassifier(random_state=42)
+model.fit(X_train, y_train)
+
+# --- [5] Evaluasi ---
+y_pred = model.predict(X_test)
+
+# Classification report sebagai tabel 5 desimal
+report_dict = classification_report(y_test, y_pred, target_names=['Benign', 'Malware'], output_dict=True, zero_division=0)
+report_df = pd.DataFrame(report_dict).T.round(5)
+
+print("\n📊 Tabel Evaluasi:")
+print(report_df)
+
+# Confusion Matrix
+cm = confusion_matrix(y_test, y_pred)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["Benign", "Malware"])
+disp.plot(cmap='Greens', values_format='d')
+plt.title("Confusion Matrix (Kaggle Data Only - Random Forest)")
+plt.show()
