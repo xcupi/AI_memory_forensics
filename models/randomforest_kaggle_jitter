@@ -1,0 +1,92 @@
+# --- [1] Import Library ---
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+import seaborn as sns # Menggunakan seaborn untuk heatmap yang lebih baik
+
+# --- [2] Load Dataset ---
+# Nama variabel disamakan dengan Kode 2 untuk konsistensi
+df_kaggle = pd.read_csv("/content/MalwareMemoryDump.csv")
+df_train_local = pd.read_csv("/content/mem_dump_train.csv")
+
+# --- [3] Fitur yang digunakan (tetap sama) ---
+selected_features = [
+    'pslist_nproc', 'pslist_nppid', 'pslist_avg_threads', 'pslist_nprocs64bit',
+    'dlllist_ndlls', 'dlllist_avg_dlls_per_proc', 'handles_nhandles',
+    'handles_avg_handles_per_proc', 'handles_nport', 'handles_nfile',
+    'handles_nevent', 'handles_ndesktop', 'handles_nkey', 'handles_nthread',
+    'handles_ndirectory', 'handles_nsemaphore', 'handles_ntimer', 'handles_nsection',
+    'handles_nmutant', 'ldrmodules_not_in_load', 'ldrmodules_not_in_init',
+    'ldrmodules_not_in_mem', 'ldrmodules_not_in_load_avg', 'ldrmodules_not_in_init_avg',
+    'ldrmodules_not_in_mem_avg', 'malfind_ninjections', 'malfind_commitCharge',
+    'malfind_protection', 'malfind_uniqueInjections', 'modules_nmodules',
+    'svcscan_nservices', 'svcscan_kernel_drivers', 'svcscan_fs_drivers',
+    'callbacks_ncallbacks'
+]
+
+# --- [4] Label Encoding (DIGANTI) ---
+# Menggunakan metode biner (0/1) agar sama dengan Kode 2
+df_kaggle['label'] = df_kaggle['Raw_Type'].apply(lambda x: 0 if x == 'Benign' else 1)
+df_train_local['label'] = df_train_local['Label'].apply(lambda x: 0 if x == 'Benign' else 1)
+target_names = ["Benign", "Malware"] # Definisikan nama target untuk laporan
+
+# --- [5] Jitter Augmentation (DIGANTI) ---
+# Menggunakan fungsi dan parameter yang sama persis dengan Kode 2
+def jitter(df, features, noise_level=0.01, n_augment=10):
+    augmented = []
+    for _ in range(n_augment):
+        jittered = df.copy()
+        for feat in features:
+            jittered[feat] += np.random.normal(0, noise_level * (df[feat].std() + 1e-8), size=len(df))
+        augmented.append(jittered)
+    return pd.concat(augmented, ignore_index=True)
+
+# Parameter: noise_level=0.05, n_augment=100
+df_augmented = jitter(df_train_local, selected_features, noise_level=0.05, n_augment=100)
+
+# --- [6] Gabung & Split Data (Sama seperti Kode 2) ---
+df_combined = pd.concat([df_kaggle, df_augmented], ignore_index=True)
+X_all = df_combined[selected_features]
+y_all = df_combined['label']
+
+# Split data dengan parameter yang sama persis
+X_train, X_val, y_train, y_val = train_test_split(
+    X_all, y_all, test_size=0.3, random_state=42, stratify=y_all
+)
+
+# --- [7] Scaling Dihapus ---
+# StandardScaler dihapus agar sama dengan pipeline XGBoost.
+# RandomForest tidak sensitif terhadap scaling, jadi ini tidak masalah.
+
+# --- [8] Train RandomForest Model ---
+# Model tetap RandomForest, tapi dilatih pada data yang sama dengan XGBoost
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf.fit(X_train, y_train) # Menggunakan data tanpa scaling
+
+# --- [9] Predict & Evaluate on Validation Set ---
+y_pred_val = clf.predict(X_val) # Menggunakan data tanpa scaling
+
+print("=== Evaluation on Validation Set (RandomForest with Standardized Jitter) ===")
+print(classification_report(
+    y_val, y_pred_val,
+    target_names=target_names,
+    digits=5,
+    zero_division=0
+))
+
+# --- [10] Show Confusion Matrix (Visualisasi disamakan) ---
+cm = confusion_matrix(y_val, y_pred_val)
+plt.figure(figsize=(6, 5))
+sns.heatmap(
+    cm, annot=True, fmt='d', cmap="Greens", # Menggunakan cmap Greens
+    xticklabels=target_names,
+    yticklabels=target_names
+)
+plt.title("Confusion Matrix - Validation (RandomForest)", fontsize=14)
+plt.xlabel("Predicted label", fontsize=12)
+plt.ylabel("True label", fontsize=12)
+plt.tight_layout()
+plt.show()
