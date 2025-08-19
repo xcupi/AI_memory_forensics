@@ -1,0 +1,91 @@
+# --- [1] Install jika belum ---
+!pip install imbalanced-learn --quiet
+
+# --- [2] Import Library ---
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+from imblearn.over_sampling import SMOTE
+import matplotlib.pyplot as plt
+
+# --- [3] Load Dataset ---
+df_kaggle = pd.read_csv("/content/MalwareMemoryDump.csv")
+df_train_local = pd.read_csv("/content/mem_dump_train.csv")
+
+# --- [4] Fitur yang digunakan ---
+selected_features = [
+    'pslist_nproc', 'pslist_nppid', 'pslist_avg_threads', 'pslist_nprocs64bit',
+    'dlllist_ndlls', 'dlllist_avg_dlls_per_proc', 'handles_nhandles',
+    'handles_avg_handles_per_proc', 'handles_nport', 'handles_nfile',
+    'handles_nevent', 'handles_ndesktop', 'handles_nkey', 'handles_nthread',
+    'handles_ndirectory', 'handles_nsemaphore', 'handles_ntimer', 'handles_nsection',
+    'handles_nmutant', 'ldrmodules_not_in_load', 'ldrmodules_not_in_init',
+    'ldrmodules_not_in_mem', 'ldrmodules_not_in_load_avg', 'ldrmodules_not_in_init_avg',
+    'ldrmodules_not_in_mem_avg', 'malfind_ninjections', 'malfind_commitCharge',
+    'malfind_protection', 'malfind_uniqueInjections', 'modules_nmodules',
+    'svcscan_nservices', 'svcscan_kernel_drivers', 'svcscan_fs_drivers',
+    'callbacks_ncallbacks'
+]
+
+# --- [5] Encode Label ---
+# Menggunakan LabelEncoder untuk menangani berbagai jenis label (misal: 'Benign', 'Spyware', dll)
+le = LabelEncoder()
+all_labels = pd.concat([df_kaggle['Label'], df_train_local['Label']], ignore_index=True).str.lower()
+le.fit(all_labels)
+
+df_kaggle['Label'] = le.transform(df_kaggle['Label'].str.lower())
+df_train_local['Label'] = le.transform(df_train_local['Label'].str.lower())
+
+# --- [6] Siapkan Data Kaggle ---
+X_kaggle = df_kaggle[selected_features]
+y_kaggle = df_kaggle['Label']
+
+# --- [7] Siapkan dan Augmentasi HANYA Data Lokal ---
+X_train_local = df_train_local[selected_features]
+y_train_local = df_train_local['Label']
+
+# Tentukan target
+sampling_strategy = {label: 500 for label in np.unique(y_train_local)}
+# k_neighbors harus lebih kecil dari jumlah sampel di kelas minoritas
+min_samples = y_train_local.value_counts().min()
+k_neighbors = min(min_samples - 1, 5) # Menggunakan 5 atau kurang jika sampel terlalu sedikit
+
+smote = SMOTE(sampling_strategy=sampling_strategy, k_neighbors=k_neighbors, random_state=42)
+X_local_smote, y_local_smote = smote.fit_resample(X_train_local, y_train_local)
+
+print(f"Jumlah data lokal setelah SMOTE:\n{pd.Series(y_local_smote).value_counts()}")
+
+# --- [8] Gabungkan Data Kaggle + Data Lokal yang sudah di-SMOTE ---
+X_combined = pd.concat([X_kaggle, pd.DataFrame(X_local_smote, columns=selected_features)], ignore_index=True)
+y_combined = pd.concat([y_kaggle, pd.Series(y_local_smote)], ignore_index=True)
+
+# --- [9] Split Data Gabungan untuk Train/Validation ---
+X_train, X_val, y_train, y_val = train_test_split(
+    X_combined, y_combined, test_size=0.3, stratify=y_combined, random_state=42
+)
+
+# --- [10] Scaling ---
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_val_scaled = scaler.transform(X_val)
+
+# --- [11] Train RandomForest ---
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+clf.fit(X_train_scaled, y_train)
+
+# --- [12] Predict & Evaluate on Validation Set ---
+y_pred_val = clf.predict(X_val_scaled)
+report_df = pd.DataFrame(classification_report(y_val, y_pred_val, target_names=le.classes_, output_dict=True, zero_division=0)).T.round(5)
+
+# --- [13] Show Results ---
+print("\n=== Evaluation on Validation Set (Kaggle + SMOTE'd Local Data) ===")
+display(report_df)
+
+cm = confusion_matrix(y_val, y_pred_val)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=le.classes_)
+disp.plot(cmap='Oranges', values_format='d')
+plt.title("Confusion Matrix - Validation (RF + SMOTE on Local)")
+plt.show()
