@@ -1,32 +1,35 @@
-# Memory Forensics with Modified VolMemLyzer + Machine Learning
+# AI Memory Forensics
 
-This repository provides a workflow for **malware detection using memory forensics**.  
-It combines a **modified version of VolMemLyzer** for feature extraction with **machine learning models** for classification.
+This repository demonstrates the use of **Artificial Intelligence (AI) for malware detection in memory forensics**.  
+We leverage a reduced set of features extracted from memory dumps to train and evaluate machine learning models.
 
 ---
 
-## 🔹 Contents
-1. **Modified VolMemLyzer**  
+## 🔹 Key Components
+1. **Feature Extraction (Modified VolMemLyzer)**  
    - Based on [VolMemLyzer](https://github.com/ahlashkari/VolMemLyzer) (GPL v3).  
-   - Reduced feature set focusing on process, handle, module, service, and injection features.  
-   - Still licensed under **GPL v3**.  
+   - Used only as a **feature extractor**.  
+   - We customized it to extract a selected subset of features relevant for AI classification.  
 
-2. **Extracted Features (CSV)**  
-   - Memory dumps were analyzed using the modified VolMemLyzer.  
-   - Resulting features are stored in `.csv` format for easier use in ML workflows.  
-   - Includes fields such as:
-     - `pslist_nproc`, `dlllist_ndlls`, `handles_nhandles`, `ldrmodules_not_in_load`,  
-       `malfind_ninjections`, `svcscan_nservices`, `callbacks_ncallbacks`, etc.  
+2. **Datasets (CSV)**  
+   - Memory dumps are processed to generate structured `.csv` files containing numeric features.  
+   - These datasets are the input for training AI models.  
+   - Example features include:
+     - `pslist_nproc`, `dlllist_ndlls`, `handles_nhandles`,  
+       `ldrmodules_not_in_load`, `malfind_ninjections`, `svcscan_nservices`,  
+       `callbacks_ncallbacks`, etc.  
 
 3. **AI Models**  
-   - Machine learning classifiers trained on extracted features:  
+   - Two ML classifiers are provided:  
      - **RandomForest**  
      - **XGBoost**  
-   - Models aim to detect potential malicious activity in memory snapshots.  
+   - Models are trained on extracted features to classify benign vs malicious behavior.  
 
 ---
 
 ## 🔹 Workflow
-1. Use **Modified VolMemLyzer** to extract reduced features from memory dumps.  
-2. Store extracted features in `.csv` datasets.  
-3. Train & evaluate ML models (RandomForest, XGBoost).  
+1. **Extract features** from memory dump using the modified VolMemLyzer.  
+2. **Convert features** into structured `.csv` dataset.  
+3. **Train models** (RandomForest, XGBoost) on the dataset.  
+4. **Evaluate models** for malware detection performance.  
+5. **Apply model** on new memory dump features for classification.  
