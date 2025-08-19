@@ -1,0 +1,84 @@
+# --- [0] Install Library ---
+!pip install imbalanced-learn xgboost seaborn
+
+# --- [1] Import Libraries ---
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, confusion_matrix
+from imblearn.over_sampling import SMOTE
+from xgboost import XGBClassifier
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# --- [2] Load Dataset ---
+df_kaggle = pd.read_csv("/content/MalwareMemoryDump.csv")
+df_train = pd.read_csv("/content/mem_dump_train.csv")
+
+# --- [3] Fitur yang Digunakan ---
+selected_features = [
+    'pslist_nproc', 'pslist_nppid', 'pslist_avg_threads', 'pslist_nprocs64bit',
+    'dlllist_ndlls', 'dlllist_avg_dlls_per_proc', 'handles_nhandles',
+    'handles_avg_handles_per_proc', 'handles_nport', 'handles_nfile',
+    'handles_nevent', 'handles_ndesktop', 'handles_nkey', 'handles_nthread',
+    'handles_ndirectory', 'handles_nsemaphore', 'handles_ntimer', 'handles_nsection',
+    'handles_nmutant', 'ldrmodules_not_in_load', 'ldrmodules_not_in_init',
+    'ldrmodules_not_in_mem', 'ldrmodules_not_in_load_avg', 'ldrmodules_not_in_init_avg',
+    'ldrmodules_not_in_mem_avg', 'malfind_ninjections', 'malfind_commitCharge',
+    'malfind_protection', 'malfind_uniqueInjections', 'modules_nmodules',
+    'svcscan_nservices', 'svcscan_kernel_drivers', 'svcscan_fs_drivers',
+    'callbacks_ncallbacks'
+]
+
+# --- [4] Label Encoding ---
+def encode_label(df):
+    if 'label' not in df.columns:
+        if 'Raw_Type' in df.columns:
+            df['label'] = df['Raw_Type'].apply(lambda x: 0 if x == 'Benign' else 1)
+        elif 'Label' in df.columns:
+            df['label'] = df['Label'].map({'Benign': 0, 'Malware': 1})
+    return df
+
+df_kaggle = encode_label(df_kaggle)
+df_train = encode_label(df_train)
+
+# --- [5] Siapkan Fitur ---
+def prepare_features(df, features):
+    for feat in features:
+        if feat not in df.columns:
+            df[feat] = 0
+    return df[features], df['label']
+
+X_kaggle, y_kaggle = prepare_features(df_kaggle, selected_features)
+X_train_base, y_train_base = prepare_features(df_train, selected_features)
+
+# --- [6] Augmentasi Data Lokal ---
+target_per_class = 300
+smote = SMOTE(sampling_strategy={0: target_per_class, 1: target_per_class}, k_neighbors=2, random_state=42)
+X_train_aug, y_train_aug = smote.fit_resample(X_train_base, y_train_base)
+
+# --- [7] Gabungkan Data Kaggle dan Augmented ---
+X_combined = pd.concat([X_kaggle, pd.DataFrame(X_train_aug, columns=selected_features)], ignore_index=True)
+y_combined = pd.concat([y_kaggle, pd.Series(y_train_aug)], ignore_index=True)
+
+# --- [8] Split 70:30 untuk Validasi ---
+X_train, X_val, y_train, y_val = train_test_split(X_combined, y_combined, test_size=0.3, random_state=42, stratify=y_combined)
+
+# --- [9] Train Model ---
+model = XGBClassifier(eval_metric='logloss')
+model.fit(X_train, y_train)
+
+# --- [10] Validasi Model (Split dari Kaggle+SMOTE) ---
+y_val_pred = model.predict(X_val)
+
+print("=== Evaluation on Validation Set (from Kaggle + SMOTE) ===")
+print(classification_report(y_val, y_val_pred, target_names=["Benign", "Malware"], digits=5))
+
+cm_val = confusion_matrix(y_val, y_val_pred)
+plt.figure(figsize=(6,5))
+sns.heatmap(cm_val, annot=True, fmt='d', cmap="Greens", xticklabels=["Benign", "Malware"], yticklabels=["Benign", "Malware"])
+plt.title("Confusion Matrix - Validation Set", fontsize=14)
+plt.xlabel("Predicted Label", fontsize=12)
+plt.ylabel("True Label", fontsize=12)
+plt.tight_layout()
+plt.show()
