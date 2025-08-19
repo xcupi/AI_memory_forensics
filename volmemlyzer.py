@@ -1,3 +1,6 @@
+# Modified from VolMemLyzer (https://github.com/ahlashkari/VolMemLyzer)
+# Licensed under GPL v3
+
 import argparse
 import csv
 import functools
@@ -188,4 +191,5 @@ if __name__ == '__main__':
         file_path = os.path.join(folderpath, filename)
         print(file_path)
         if (file_path).endswith('.raw') or (file_path).endswith('.mem') or (file_path).endswith('.lime') or (file_path).endswith('.vmem') or (file_path).endswith('.mddramimage'):
+
             extract_all_features_from_memdump((file_path), args.output, args.volatility)
