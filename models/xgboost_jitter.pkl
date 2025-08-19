@@ -1,0 +1,80 @@
+# --- [0] Install Library ---
+!pip install imbalanced-learn xgboost seaborn
+
+# --- [1] Import library ---
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+from xgboost import XGBClassifier
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# --- [2] Load Dataset ---
+df_kaggle = pd.read_csv("/content/MalwareMemoryDump.csv")
+df_train_local = pd.read_csv("/content/mem_dump_train.csv")
+
+# --- [3] Fitur yang digunakan ---
+selected_features = [
+    'pslist_nproc', 'pslist_nppid', 'pslist_avg_threads', 'pslist_nprocs64bit',
+    'dlllist_ndlls', 'dlllist_avg_dlls_per_proc', 'handles_nhandles',
+    'handles_avg_handles_per_proc', 'handles_nport', 'handles_nfile',
+    'handles_nevent', 'handles_ndesktop', 'handles_nkey', 'handles_nthread',
+    'handles_ndirectory', 'handles_nsemaphore', 'handles_ntimer', 'handles_nsection',
+    'handles_nmutant', 'ldrmodules_not_in_load', 'ldrmodules_not_in_init',
+    'ldrmodules_not_in_mem', 'ldrmodules_not_in_load_avg', 'ldrmodules_not_in_init_avg',
+    'ldrmodules_not_in_mem_avg', 'malfind_ninjections', 'malfind_commitCharge',
+    'malfind_protection', 'malfind_uniqueInjections', 'modules_nmodules',
+    'svcscan_nservices', 'svcscan_kernel_drivers', 'svcscan_fs_drivers',
+    'callbacks_ncallbacks'
+]
+
+# --- [4] Label Encoding ---
+df_kaggle['label'] = df_kaggle['Raw_Type'].apply(lambda x: 0 if x == 'Benign' else 1)
+df_train_local['label'] = df_train_local['Label'].apply(lambda x: 0 if x == 'Benign' else 1)
+
+# --- [5] Jitter Augmentation ---
+def jitter(df, features, noise_level=0.01, n_augment=10):
+    augmented = []
+    for _ in range(n_augment):
+        jittered = df.copy()
+        for feat in features:
+            jittered[feat] += np.random.normal(0, noise_level * (df[feat].std() + 1e-8), size=len(df))
+        augmented.append(jittered)
+    return pd.concat(augmented, ignore_index=True)
+
+df_augmented = jitter(df_train_local, selected_features, noise_level=0.05, n_augment=100)
+
+# --- [6] Gabung Kaggle + Augmented lokal, lalu split train/test (70:30) ---
+df_combined = pd.concat([df_kaggle, df_augmented], ignore_index=True)
+X_all = df_combined[selected_features]
+y_all = df_combined['label']
+X_train, X_val, y_train, y_val = train_test_split(X_all, y_all, test_size=0.3, random_state=42, stratify=y_all)
+
+# --- [7] Train Model ---
+model = XGBClassifier(eval_metric='logloss')
+model.fit(X_train, y_train)
+
+# --- [8] Validasi Model (di validation set) ---
+y_val_pred = model.predict(X_val)
+
+print("=== Evaluation on Validation Split (from Kaggle + Jitter) ===")
+print(classification_report(
+    y_val, y_val_pred,
+    target_names=["Benign", "Malware"],
+    digits=5,
+    zero_division=0
+))
+
+cm_val = confusion_matrix(y_val, y_val_pred)
+plt.figure(figsize=(6, 5))
+sns.heatmap(
+    cm_val, annot=True, fmt='d', cmap="Purples",
+    xticklabels=["Benign", "Malware"],
+    yticklabels=["Benign", "Malware"]
+)
+plt.title("Confusion Matrix - Validation Set", fontsize=14)
+plt.xlabel("Predicted label", fontsize=12)
+plt.ylabel("True label", fontsize=12)
+plt.tight_layout()
+plt.show()
